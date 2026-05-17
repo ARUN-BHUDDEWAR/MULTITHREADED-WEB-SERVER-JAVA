@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM openjdk:17-jdk-slim AS build
+FROM eclipse-temurin:17-jdk-jammy AS build
 WORKDIR /app
 
 # Copy project files
@@ -10,7 +10,7 @@ RUN mkdir -p out \
  && find src -name "*.java" -print0 | xargs -0 javac -d out || true
 
 # Stage 2: Runtime
-FROM openjdk:17-jre-slim
+FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
 
 # Copy compiled classes and web assets from build stage
