@@ -1,22 +1,16 @@
-# STAGE 1: Build
+# Build Stage
 FROM eclipse-temurin:17-jdk-focal AS build
 WORKDIR /app
 COPY . .
-
-# Compile and list files to debug if it fails
+# This finds MServer.java even if it's in src/ or src/multithread/
 RUN mkdir -p out && javac -d out $(find src -name "MServer.java")
 
-# STAGE 2: Run
+# Run Stage
 FROM eclipse-temurin:17-jre-focal
 WORKDIR /app
-
-# Copy compiled classes and the web folder
 COPY --from=build /app/out ./out
 COPY --from=build /app/web ./web
-
-# Render needs the app to listen on 0.0.0.0
-ENV PORT=8080
 EXPOSE 8080
-
-# Execute
+ENV PORT=8080
+# If your package is 'multithread', keep the prefix. If no package, use "MServer"
 CMD ["java", "-cp", "out", "multithread.MServer"]
