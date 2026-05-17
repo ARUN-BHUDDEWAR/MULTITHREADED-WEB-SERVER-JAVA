@@ -1,4 +1,4 @@
-package multithread;
+package multiththread;
 
 import java.io.*;
 import java.net.*;

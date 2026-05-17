@@ -2,31 +2,27 @@
 FROM eclipse-temurin:17-jdk-jammy AS build
 WORKDIR /app
 
-# Copy project files
+# Copy everything
 COPY . .
 
-# Ensure any local `out` copied accidentally is removed so compilation is deterministic
-RUN rm -rf out || true
-
-# Compile the single server source file (explicit path keeps it simple and reliable)
-RUN mkdir -p out \
- && javac -d out src/multithread/MServer.java
+# Clean and Compile - using lowercase 'multithread' to match standard Java packages
+RUN rm -rf out || true && \
+    mkdir -p out && \
+    javac -d out src/multithread/MServer.java
 
 # Stage 2: Runtime
-FROM eclipse-temurin:17-jre-jammy
+FROM eclipse-temurin:17-jre-focal
 WORKDIR /app
 
-# Copy compiled classes and web assets from build stage
+# Copy the compiled output and the web directory
+# Placing them both in the root (/app) ensures relative paths work
 COPY --from=build /app/out ./out
 COPY --from=build /app/web ./web
 
-# Debug: list compiled classes and web files so Render logs show what's present
-RUN echo "== /app/out content ==" && ls -la /app/out || true
-RUN echo "== /app/out/multithread ==" && ls -la /app/out/multithread || true
-RUN echo "== /app/web content ==" && ls -la /app/web || true
-
+# Set Environment
 EXPOSE 8080
 ENV PORT=8080
 
-# At container start, print out compiled classes for debugging, then exec the server
-CMD ["sh", "-c", "echo '=== runtime: /app/out ===' && ls -la /app/out || true && echo '=== runtime: /app/out/multithread ===' && ls -la /app/out/multithread || true && exec java -cp out multithread.MServer"]
+# Run directly without 'sh' to ensure signal handling and path consistency
+# Classpath 'out' means it looks inside /app/out for multithread/MServer.class
+CMD ["java", "-cp", "out", "multithread.MServer"]
