@@ -25,5 +25,5 @@ RUN echo "== /app/web content ==" && ls -la /app/web || true
 EXPOSE 8080
 ENV PORT=8080
 
-# Run the server with the correct package name (lowercase `multithread`)
-CMD ["sh", "-c", "java -cp out multithread.MServer"]
+# At container start, print out compiled classes for debugging, then exec the server
+CMD ["sh", "-c", "echo '=== runtime: /app/out ===' && ls -la /app/out || true && echo '=== runtime: /app/out/multithread ===' && ls -la /app/out/multithread || true && exec java -cp out multithread.MServer"]
