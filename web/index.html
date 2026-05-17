@@ -60,7 +60,6 @@
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
 
-                // Read the first chunk (the JSON metadata)
                 const { value } = await reader.read();
                 const jsonStr = decoder.decode(value).split('\n')[0];
                 const data = JSON.parse(jsonStr);
@@ -79,8 +78,7 @@
                 log('FAILED: Connection dropped', '#ef4444');
             }
         }
-
-        connect(); // Call it ONCE
+        connect();
     </script>
 </body>
 </html>
