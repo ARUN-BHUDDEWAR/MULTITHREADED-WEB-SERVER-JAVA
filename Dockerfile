@@ -1,20 +1,14 @@
-FROM openjdk:17-jdk-slim AS build
+# Stage 1: Build
+FROM eclipse-temurin:17-jdk-focal AS build
 WORKDIR /app
-
-# Copy full project and compile all Java sources into /app/out
 COPY . .
-RUN mkdir -p out \
- && find src -name "*.java" -print | xargs javac -d out || true
+RUN mkdir -p out && javac -d out src/multithread/MServer.java
 
-FROM openjdk:17-jre-slim
+# Stage 2: Runtime
+FROM eclipse-temurin:17-jre-focal
 WORKDIR /app
-
-# Copy compiled classes and static web assets from build stage
 COPY --from=build /app/out ./out
 COPY --from=build /app/web ./web
-
-ENV PORT=8080
 EXPOSE 8080
-
-# Run the server; it binds ServerSocket to the configured PORT (default 8080)
-CMD ["sh", "-c", "java -cp out multithread.MServer"]
+ENV PORT=8080
+CMD ["java", "-cp", "out", "multithread.MServer"]

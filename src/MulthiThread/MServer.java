@@ -11,110 +11,93 @@ public class MServer {
     private static ThreadPoolExecutor threadPool;
 
     public static void main(String[] args) {
-        int port = 8080;
-        // Strict 3-thread pool: This is your "System Design" constraint
+        // Strict 3-thread pool for System Design demonstration
         threadPool = new ThreadPoolExecutor(3, 3, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
 
+        int port = 8080;
         String portEnv = System.getenv("PORT");
         if (portEnv != null) {
             try { port = Integer.parseInt(portEnv); } catch (NumberFormatException ignored) {}
         }
 
-        ServerSocket serverSocket = null;
-        int attempts = 0;
-        while (attempts < 10) {
-            try {
-                serverSocket = new ServerSocket(port);
-                break;
-            } catch (IOException be) {
-                if (be instanceof BindException) {
-                    System.out.println("Port " + port + " in use, trying " + (port + 1));
-                    port++;
-                    attempts++;
-                } else {
-                    be.printStackTrace();
-                    return;
-                }
-            }
-        }
-
-        if (serverSocket == null) {
-            System.err.println("Failed to bind to a port after multiple attempts.");
-            return;
-        }
-
-        try (ServerSocket s = serverSocket) {
-            System.out.println("SERVER LIVE: Open http://localhost:" + s.getLocalPort() + " in your browser");
+        try (ServerSocket serverSocket = new ServerSocket(port, 50, InetAddress.getByName("0.0.0.0"))) {
+            System.out.println("SERVER LIVE ON PORT: " + port);
+            
             while (true) {
-                Socket client = s.accept();
+                Socket client = serverSocket.accept();
+                // Direct execution for files, pooled execution for /status
                 handleRequest(client);
             }
-        } catch (IOException e) { e.printStackTrace(); }
+        } catch (IOException e) {
+            System.err.println("Critical Server Error: " + e.getMessage());
+        }
     }
 
     private static void handleRequest(Socket socket) {
+        // We use a temporary thread only to read the header so the main loop doesn't block
         new Thread(() -> {
             try {
                 BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 String line = in.readLine();
-                if (line == null || line.isEmpty()) return;
+                if (line == null || line.isEmpty()) { socket.close(); return; }
                 
                 String path = line.split(" ")[1].split("\\?")[0];
 
                 if (path.equals("/status")) {
-                    // Logic: If 3 threads are busy, this task waits in the LinkedBlockingQueue
+                    // This is handled by our constrained pool
                     threadPool.submit(() -> processRequest(socket));
                 } else {
+                    // Static files handled immediately
                     serveFile(path, socket);
                 }
-            } catch (Exception e) { try { socket.close(); } catch (IOException ignored) {} }
+            } catch (Exception e) { 
+                try { socket.close(); } catch (IOException ignored) {} 
+            }
         }).start();
     }
 
     private static void processRequest(Socket socket) {
         try {
-            // Snapshot variables declared at start of method to capture peak concurrency
             int activeAtStart = threadPool.getActiveCount();
             int queueAtStart = threadPool.getQueue().size();
 
-            // Immediate logging so the backend prints the concurrency snapshot
-            System.out.println("[Backend] Received - Active: " + activeAtStart + " Queue: " + queueAtStart);
+            System.out.println("[Backend] Processing - Active: " + activeAtStart + " Queue: " + queueAtStart);
 
-            // Artificial delay so you can actually see the queue happening
-            Thread.sleep(6000);
+            Thread.sleep(6000); // Simulated work
 
             String threadName = Thread.currentThread().getName();
             String time = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
 
-            // JSON must have double quotes for keys and values to be valid
-            String json = "{"
-                + "\"status\":\"SUCCESS\"," 
-                + "\"thread\":\"" + threadName + "\"," 
-                + "\"time\":\"" + time + "\"," 
-                + "\"active\":" + activeAtStart + "," 
-                + "\"queue\":" + queueAtStart
-                + "}";
+            String json = String.format(
+                "{\"status\":\"SUCCESS\",\"thread\":\"%s\",\"time\":\"%s\",\"active\":%d,\"queue\":%d}",
+                threadName, time, activeAtStart, queueAtStart
+            );
 
             sendHttp(socket, "200 OK", "application/json", json);
-            System.out.println("[Backend] Task completed by " + threadName + " (snapshot active=" + activeAtStart + ", queue=" + queueAtStart + ")");
-        } catch (Exception e) { e.printStackTrace(); }
+        } catch (Exception e) { 
+            e.printStackTrace(); 
+        } finally {
+            try { socket.close(); } catch (IOException ignored) {}
+        }
     }
 
     private static void serveFile(String path, Socket socket) throws IOException {
         String loc = path.equals("/") ? "web/index.html" : "web" + path;
         File f = new File(loc);
-        if (!f.exists()) { 
+        
+        if (!f.exists() || f.isDirectory()) { 
             sendHttp(socket, "404 Not Found", "text/plain", "File Not Found"); 
             return; 
         }
+
         String type = loc.endsWith(".css") ? "text/css" : "text/html";
         byte[] content = Files.readAllBytes(f.toPath());
         sendHttp(socket, "200 OK", type, new String(content));
+        socket.close();
     }
 
     private static void sendHttp(Socket s, String status, String type, String body) throws IOException {
         OutputStream out = s.getOutputStream();
-        // Access-Control-Allow-Origin: * prevents the "Server Unreachable" error
         String res = "HTTP/1.1 " + status + "\r\n" +
                      "Content-Type: " + type + "\r\n" +
                      "Content-Length: " + body.getBytes().length + "\r\n" +
@@ -122,6 +105,5 @@ public class MServer {
                      "Connection: close\r\n\r\n" + body;
         out.write(res.getBytes());
         out.flush();
-        s.close();
     }
 }
