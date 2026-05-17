@@ -37,14 +37,12 @@ jobs:
         with:
           install: true
 
-      - name: Build and push Docker image to GHCR
+      - name: Build and push Docker image to GHCR (no cache)
         uses: docker/build-push-action@v4
         with:
           context: .
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/multithreaded-web-server-java:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Run container and smoke test
         env:
