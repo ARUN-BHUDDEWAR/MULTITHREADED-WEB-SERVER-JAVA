@@ -9,8 +9,10 @@ COPY . .
 RUN mkdir -p out \
  && find src -name "*.java" -print0 | xargs -0 javac -d out
 
-# Package compiled classes into a runnable JAR to avoid classpath issues
-RUN jar --create --file app.jar -C out .
+# Package compiled classes into a runnable JAR with a Main-Class manifest
+RUN printf "Main-Class: multithread.MServer\n" > manifest.mf \
+ && jar cfm app.jar manifest.mf -C out . \
+ && rm -f manifest.mf
 
 # Stage 2: Runtime
 FROM eclipse-temurin:17-jre-jammy
