@@ -33,15 +33,27 @@ jobs:
         uses: docker/setup-qemu-action@v2
 
       - name: Set up Docker Buildx
+        id: buildx
         uses: docker/setup-buildx-action@v2
         with:
           install: true
+          use: true
 
-      - name: Build and push Docker image to GHCR (no cache)
+      - name: Log in to GHCR
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image to GHCR (load locally for smoke test)
+        id: buildpush
         uses: docker/build-push-action@v4
         with:
           context: .
+          builder: ${{ steps.buildx.outputs.name }}
           push: true
+          load: true
           tags: ghcr.io/${{ github.repository_owner }}/multithreaded-web-server-java:latest
 
       - name: Run container and smoke test
