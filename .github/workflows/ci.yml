@@ -46,22 +46,30 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image to GHCR (load locally for smoke test)
+      - name: Build and push Docker image to GHCR
         id: buildpush
         uses: docker/build-push-action@v4
         with:
           context: .
           builder: ${{ steps.buildx.outputs.name }}
           push: true
-          load: true
           tags: ghcr.io/${{ github.repository_owner }}/multithreaded-web-server-java:latest
 
       - name: Run container and smoke test
         env:
           PORT: 8080
         run: |
-          docker run -d --name server-test -p 8080:8080 ghcr.io/${{ github.repository_owner }}/multithreaded-web-server-java:latest || docker logs server-test || true
-          sleep 5
+          IMAGE=ghcr.io/${{ github.repository_owner }}/multithreaded-web-server-java:latest
+          echo "Pulling image $IMAGE"
+          retries=0
+          until docker pull "$IMAGE"; do
+            retries=$((retries+1))
+            if [ "$retries" -ge 6 ]; then
+              echo "Failed to pull image after $retries attempts"; exit 1; fi
+            echo "Pull failed, retrying in 3s (attempt: $retries)"; sleep 3; done
+
+          docker run -d --name server-test -p 8080:8080 "$IMAGE"
+          sleep 8
           if ! curl --fail http://localhost:8080/; then
             echo "Server did not respond"; docker logs server-test; exit 1; fi
-          docker stop server-test
+          docker stop server-test || true
