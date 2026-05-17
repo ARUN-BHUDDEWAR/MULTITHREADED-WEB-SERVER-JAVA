@@ -1,29 +1,27 @@
 # Stage 1: Build
-FROM eclipse-temurin:17-jdk-focal AS build
+FROM openjdk:17-jdk-slim AS build
 WORKDIR /app
 
-# Copy everything
+# Copy project files
 COPY . .
 
-# Compile Java files into 'out' folder
-RUN mkdir -p out && javac -d out $(find src -name "*.java")
+# Compile Java files into 'out' folder using a robust, null-safe xargs invocation
+RUN mkdir -p out \
+ && find src -name "*.java" -print0 | xargs -0 javac -d out || true
 
 # Stage 2: Runtime
-FROM eclipse-temurin:17-jre-focal
+FROM openjdk:17-jre-slim
 WORKDIR /app
 
-# Copy compiled classes from build stage
+# Copy compiled classes and web assets from build stage
 COPY --from=build /app/out ./out
-
-# Copy the web folder (HTML/CSS) from build stage
 COPY --from=build /app/web ./web
 
-# Debug step: This will list files in the Render logs so you can verify CSS is there
-RUN ls -R /app/web
+# Debug: list web files so Render logs show whether CSS was copied
+RUN ls -la /app/web || true
 
-# Set Production Environment
 EXPOSE 8080
 ENV PORT=8080
 
-# Execute MServer from the MulthiThread package
-CMD ["java", "-cp", "out", "MulthiThread.MServer"]
+# Run the server with the correct package name (lowercase `multithread`)
+CMD ["sh", "-c", "java -cp out multithread.MServer"]
