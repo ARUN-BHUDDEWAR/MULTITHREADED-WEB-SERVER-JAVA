@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Java Thread Queue Dashboard</title>
+    <title>Java Telemetry Dashboard</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -11,25 +11,24 @@
         <header class="header">
             <span class="badge">Live Production</span>
             <h1>Java Telemetry Dashboard</h1>
-            <p>Resource-Constrained Thread Pool Monitoring</p>
+            <p>Real-Time Thread Pool Monitoring</p>
         </header>
 
         <div id="loading-box" class="card">
             <div class="loader"></div>
-            <h2 id="queue-status">Waiting for Worker Slot...</h2>
-            <p>Your request is currently held in the <code>LinkedBlockingQueue</code>.</p>
-            <div id="timer" style="margin-top: 15px; color: var(--accent); font-weight: bold; font-family: monospace;">Time in queue: 0s</div>
+            <h2>Waiting for Worker Slot...</h2>
+            <p id="queue-timer" style="color: #60a5fa; font-weight: bold; font-family: monospace;">Time in queue: 0s</p>
         </div>
 
         <div id="data-box" class="card hidden">
-            <div class="success-header">
-                <h2>✓ Thread Occupied</h2>
-            </div>
-            <p style="text-align: center; margin-bottom: 15px;">You are currently holding a Worker Thread hostage.</p>
+            <div class="success-header"><h2>✓ Thread Captured</h2></div>
             <div class="grid">
-                <div class="stat-item"><label>Status</label><span id="t-id" style="color: #34d399;">CONNECTED</span></div>
+                <div class="stat-item"><label>Worker Thread</label><span id="t-id">...</span></div>
+                <div class="stat-item"><label>Active Workers</label><span id="t-active">...</span></div>
+                <div class="stat-item"><label>Queue Depth</label><span id="t-queue">...</span></div>
+                <div class="stat-item"><label>Capture Time</label><span id="t-time">...</span></div>
             </div>
-            <button class="btn" style="background: #ef4444;" onclick="location.reload()">Disconnect (Release Thread)</button>
+            <button class="btn" style="background: #ef4444; margin-top: 20px;" onclick="location.reload()">Release Thread</button>
         </div>
 
         <div class="console">
@@ -47,45 +46,41 @@
             document.getElementById('logs').prepend(div);
         };
 
-        async function runTest() {
+        async function connect() {
             const startTime = Date.now();
-            const timerEl = document.getElementById('timer');
-            
-            // Update the timer every second
+            const timerEl = document.getElementById('queue-timer');
             const interval = setInterval(() => {
                 timerEl.innerText = `Time in queue: ${Math.floor((Date.now() - startTime) / 1000)}s`;
             }, 1000);
 
-            log('Attempting to connect to backend...');
+            log('Request sent to LinkedBlockingQueue...');
 
-            /**
-             * We use EventSource because it's designed for long-running connections.
-             * The server will keep this connection open until the user closes the tab.
-             */
-            const eventSource = new EventSource('/status');
+            try {
+                const response = await fetch('/status');
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
 
-            // This triggers as soon as the server accepts the connection (the thread is now busy)
-            eventSource.onopen = () => {
+                // Read the first chunk (the JSON metadata)
+                const { value } = await reader.read();
+                const jsonStr = decoder.decode(value).split('\n')[0];
+                const data = JSON.parse(jsonStr);
+
                 clearInterval(interval);
-                log('SUCCESS: Thread captured!');
+                log(`Success! Captured by ${data.thread}`);
+
                 document.getElementById('loading-box').classList.add('hidden');
                 document.getElementById('data-box').classList.remove('hidden');
-            };
+                document.getElementById('t-id').innerText = data.thread;
+                document.getElementById('t-active').innerText = `${data.active}/3`;
+                document.getElementById('t-queue').innerText = data.queue;
+                document.getElementById('t-time').innerText = data.time;
 
-            // This triggers if the connection drops or the server is full/down
-            eventSource.onerror = (err) => {
-                // If we haven't connected yet, it's just waiting in queue
-                if (eventSource.readyState === EventSource.CONNECTING) {
-                    console.log("Waiting in queue...");
-                } else {
-                    log('DISCONNECTED: Thread released.', '#ef4444');
-                    eventSource.close();
-                }
-            };
+            } catch (err) {
+                log('FAILED: Connection dropped', '#ef4444');
+            }
         }
 
-        // Start the test immediately on page load
-        runTest();
+        connect(); // Call it ONCE
     </script>
 </body>
 </html>
