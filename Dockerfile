@@ -5,6 +5,9 @@ WORKDIR /app
 # Copy project files
 COPY . .
 
+# Ensure any local `out` copied accidentally is removed so compilation is deterministic
+RUN rm -rf out || true
+
 # Compile the single server source file (explicit path keeps it simple and reliable)
 RUN mkdir -p out \
  && javac -d out src/multithread/MServer.java
