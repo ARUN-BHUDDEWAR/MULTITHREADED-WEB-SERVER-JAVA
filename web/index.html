@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Java Thread Queue Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <span class="badge">Live Production</span>
+            <h1>Java Telemetry Dashboard</h1>
+            <p>Resource-Constrained Thread Pool Monitoring</p>
+        </header>
+
+        <div id="loading-box" class="card">
+            <div class="loader"></div>
+            <h2 id="queue-status">Waiting for Worker Slot...</h2>
+            <p>Your request is currently held in the <code>LinkedBlockingQueue</code>.</p>
+            <div id="timer" style="margin-top: 15px; color: var(--accent); font-weight: bold; font-family: monospace;">Connecting...</div>
+        </div>
+
+        <div id="data-box" class="card hidden">
+            <div class="success-header">
+                <h2>✓ Request Processed</h2>
+            </div>
+            <div class="grid">
+                <div class="stat-item"><label>Worker Thread</label><span id="t-id">...</span></div>
+                <div class="stat-item"><label>Active Workers</label><span id="t-active">...</span></div>
+                <div class="stat-item"><label>Queue Depth</label><span id="t-queue">...</span></div>
+                <div class="stat-item"><label>Server Time</label><span id="t-time">...</span></div>
+            </div>
+            <button class="btn" onclick="location.reload()">Send New Request</button>
+        </div>
+
+        <div class="console">
+            <div class="console-header">System Logs</div>
+            <div id="logs" class="log-entries"></div>
+        </div>
+    </div>
+
+    <script>
+        const log = (msg, color = "#34d399") => {
+            const div = document.createElement('div');
+            div.className = 'log';
+            div.style.color = color;
+            div.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            document.getElementById('logs').prepend(div);
+        };
+
+        // Cross-tab coordination so only 3 tabs can be active at a time.
+        const TAB_ID = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+        const ACTIVE_KEY = 'telemetry_active_v1';
+        const SLOT_TIMEOUT = 20000;
+
+        const now = () => Date.now();
+
+        function readActive() {
+            try {
+                const raw = localStorage.getItem(ACTIVE_KEY);
+                if (!raw) return [];
+                const arr = JSON.parse(raw);
+                const fresh = arr.filter(e => (now() - e.ts) < SLOT_TIMEOUT);
+                if (fresh.length !== arr.length) localStorage.setItem(ACTIVE_KEY, JSON.stringify(fresh));
+                return fresh;
+            } catch (e) { return []; }
+        }
+
+        function writeActive(arr) { localStorage.setItem(ACTIVE_KEY, JSON.stringify(arr)); }
+
+        function tryAcquireSlot() {
+            const arr = readActive();
+            if (arr.find(x => x.id === TAB_ID)) return true;
+            if (arr.length < 3) { arr.push({ id: TAB_ID, ts: now() }); writeActive(arr); return true; }
+            return false;
+        }
+
+        function releaseSlot() { writeActive(readActive().filter(x => x.id !== TAB_ID)); }
+
+        let heartbeat = null;
+        function startHeartbeat() { heartbeat = setInterval(() => { const arr = readActive(); const idx = arr.findIndex(x => x.id === TAB_ID); if (idx>=0) { arr[idx].ts = now(); writeActive(arr); } }, 4000); }
+        function stopHeartbeat() { if (heartbeat) clearInterval(heartbeat); }
+
+        function showQueuedUI() { document.getElementById('queue-status').innerText = 'Oops — server full, please wait until someone leaves.'; document.getElementById('loading-box').classList.remove('hidden'); document.getElementById('data-box').classList.add('hidden'); }
+        function showProcessingUI() { document.getElementById('queue-status').innerText = 'Waiting for Worker Slot...'; document.getElementById('loading-box').classList.remove('hidden'); document.getElementById('data-box').classList.add('hidden'); }
+
+        async function runTest() {
+            const startTime = Date.now();
+            log('Request attempt: ' + TAB_ID);
+
+            const timerEl = document.getElementById('timer');
+            timerEl.innerText = 'Time in queue: 0s';
+            const interval = setInterval(() => { timerEl.innerText = `Time in queue: ${Math.floor((Date.now()-startTime)/1000)}s`; }, 1000);
+
+            showProcessingUI();
+
+            if (!tryAcquireSlot()) {
+                showQueuedUI();
+                await new Promise(resolve => { const poll = setInterval(() => { if (tryAcquireSlot()) { clearInterval(poll); resolve(); } }, 1000); });
+            }
+
+            startHeartbeat();
+
+            const reqId = Math.random();
+            const url = `/status?requestID=${reqId}`;
+            try {
+                const res = await fetch(url, { cache: 'no-store', headers: { 'X-Request-ID': reqId } });
+                const data = await res.json();
+                clearInterval(interval); stopHeartbeat(); releaseSlot();
+                const duration = ((Date.now()-startTime)/1000).toFixed(1);
+                log(`Success! Handled in ${duration}s by ${data.thread}`);
+                document.getElementById('loading-box').classList.add('hidden'); document.getElementById('data-box').classList.remove('hidden');
+                document.getElementById('t-id').innerText = data.thread; document.getElementById('t-active').innerText = `${data.active}/3`; document.getElementById('t-queue').innerText = data.queue; document.getElementById('t-time').innerText = data.time;
+            } catch (err) {
+                clearInterval(interval); stopHeartbeat(); releaseSlot(); log('FAILED: Server Unreachable', '#ef4444');
+            }
+        }
+
+        window.addEventListener('storage', (ev) => { if (ev.key === ACTIVE_KEY) { /* UI can react if desired */ } });
+
+        runTest();
+
+        runTest();
+    </script>
+</body>
+</html>

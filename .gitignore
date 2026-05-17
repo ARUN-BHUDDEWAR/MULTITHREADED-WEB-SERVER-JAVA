@@ -1,0 +1,14 @@
+# Build outputs
+out/
+*.class
+
+# Environment
+.env
+.env.*
+
+# IDEs
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
