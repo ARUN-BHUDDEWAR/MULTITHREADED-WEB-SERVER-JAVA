@@ -54,3 +54,16 @@ $env:PORT=8080; java -cp out multithread.MServer
 ## Files of interest
 - `src/MulthiThread/MServer.java` — server with ThreadPoolExecutor and snapshot-on-entry telemetry
 - `web/index.html` — client UI and cross-tab queue coordination
+
+## CI / CD
+
+This project includes a GitHub Actions workflow at `.github/workflows/ci.yml` that:
+- Compiles the Java sources with JDK 17
+- Builds a Docker image and pushes it to GitHub Container Registry (GHCR) as `multithreaded-web-server-java:latest`
+- Runs a smoke test by starting the container and hitting `/`
+
+If you want to deploy to Render or Railway, both platforms can build from this repo using the included `Dockerfile`.
+
+Notes for Render/Railway:
+- Create a service that builds from the repository and set `PORT` in environment variables if you want a different port.
+- If using GHCR images, you can configure Render/Railway to pull the image from GHCR and deploy it.
