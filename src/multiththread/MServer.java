@@ -1,4 +1,4 @@
-package multiththread;
+package multithread; // <--- MUST BE LOWERCASE
 
 import java.io.*;
 import java.net.*;
@@ -11,9 +11,8 @@ public class MServer {
     private static ThreadPoolExecutor threadPool;
 
     public static void main(String[] args) {
-        // 3 Workers, 10 in queue
+        // Core: 3, Max: 3, Queue: 10
         threadPool = new ThreadPoolExecutor(3, 3, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(10));
-
         int port = Integer.parseInt(System.getenv().getOrDefault("PORT", "8080"));
 
         try (ServerSocket serverSocket = new ServerSocket(port, 50, InetAddress.getByName("0.0.0.0"))) {
@@ -30,7 +29,8 @@ public class MServer {
             try {
                 BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 String line = in.readLine();
-                if (line == null) return;
+                if (line == null || line.isEmpty()) return;
+                
                 String path = line.split(" ")[1].split("\\?")[0];
 
                 if (path.equals("/status")) {
@@ -38,7 +38,9 @@ public class MServer {
                 } else {
                     serveFile(path, socket);
                 }
-            } catch (Exception e) { try { socket.close(); } catch (IOException ignored) {} }
+            } catch (Exception e) { 
+                try { socket.close(); } catch (IOException ignored) {} 
+            }
         }).start();
     }
 
@@ -50,36 +52,42 @@ public class MServer {
             int queued = threadPool.getQueue().size();
             String time = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
 
-            // 1. Send Headers
+            // Headers with MIME type for JSON
             String headers = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nConnection: keep-alive\r\n\r\n";
             out.write(headers.getBytes());
 
-            // 2. Send the REAL-TIME Metadata (The UI needs this)
             String json = String.format("{\"thread\":\"%s\", \"active\":%d, \"queue\":%d, \"time\":\"%s\"}\n", 
                           tName, active, queued, time);
             out.write(json.getBytes());
             out.flush();
 
-            // 3. HOSTAGE LOOP - Thread stays here until browser closes
             while (true) {
-                out.write(" ".getBytes()); // Keep-alive ping
+                out.write(" ".getBytes()); 
                 out.flush();
                 Thread.sleep(2000);
             }
         } catch (Exception e) {
-            System.out.println("[Backend] User disconnected, releasing thread.");
+            System.out.println("[Backend] Connection closed.");
         } finally {
             try { socket.close(); } catch (IOException ignored) {}
         }
     }
 
     private static void serveFile(String path, Socket s) throws IOException {
-        String loc = path.equals("/") ? "web/index.html" : "web" + path;
-        File f = new File(loc);
+        // Use relative path to 'web' folder in /app
+        String fileName = path.equals("/") ? "index.html" : path.replace("/", "");
+        File f = new File("web", fileName);
+
         if (!f.exists()) return;
+
         byte[] content = Files.readAllBytes(f.toPath());
+        String contentType = fileName.endsWith(".css") ? "text/css" : "text/html";
+
         OutputStream out = s.getOutputStream();
-        out.write(("HTTP/1.1 200 OK\r\nContent-Length: " + content.length + "\r\n\r\n").getBytes());
+        String response = "HTTP/1.1 200 OK\r\n" +
+                         "Content-Type: " + contentType + "\r\n" +
+                         "Content-Length: " + content.length + "\r\n\r\n";
+        out.write(response.getBytes());
         out.write(content);
         out.flush();
         s.close();
